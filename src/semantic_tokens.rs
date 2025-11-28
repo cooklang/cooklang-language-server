@@ -9,11 +9,14 @@ use crate::document::Document;
 const TOKEN_INGREDIENT: u32 = 0;
 const TOKEN_COOKWARE: u32 = 1;
 const TOKEN_TIMER: u32 = 2;
-const TOKEN_QUANTITY: u32 = 3;
-const TOKEN_UNIT: u32 = 4;
+#[allow(dead_code)]
+const TOKEN_QUANTITY: u32 = 3;  // Reserved for future use
+#[allow(dead_code)]
+const TOKEN_UNIT: u32 = 4;  // Reserved for future use
 const TOKEN_COMMENT: u32 = 5;
 const TOKEN_METADATA_KEY: u32 = 6;
-const TOKEN_METADATA_VALUE: u32 = 7;
+#[allow(dead_code)]
+const TOKEN_METADATA_VALUE: u32 = 7;  // Reserved for future use
 const TOKEN_SECTION: u32 = 8;
 
 pub const TOKEN_TYPES: &[SemanticTokenType] = &[
@@ -105,13 +108,10 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                 let start = idx;
                 let mut end = idx + 1;
 
-                // Collect the ingredient name
+                // Collect the ingredient name (no spaces allowed outside braces)
                 while let Some(&(i, c)) = chars.peek() {
-                    if c.is_alphanumeric() || c == '_' || c == ' ' {
-                        end = i + c.len_utf8();
-                        chars.next();
-                    } else if c == '{' {
-                        // Include until closing brace
+                    if c == '{' {
+                        // Include until closing brace (spaces allowed inside)
                         chars.next();
                         end = i + 1;
                         while let Some(&(i2, c2)) = chars.peek() {
@@ -122,6 +122,9 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                             }
                         }
                         break;
+                    } else if c.is_alphanumeric() || c == '_' {
+                        end = i + c.len_utf8();
+                        chars.next();
                     } else {
                         break;
                     }
@@ -138,10 +141,7 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                 let mut end = idx + 1;
 
                 while let Some(&(i, c)) = chars.peek() {
-                    if c.is_alphanumeric() || c == '_' || c == ' ' {
-                        end = i + c.len_utf8();
-                        chars.next();
-                    } else if c == '{' {
+                    if c == '{' {
                         chars.next();
                         end = i + 1;
                         while let Some(&(i2, c2)) = chars.peek() {
@@ -152,6 +152,9 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                             }
                         }
                         break;
+                    } else if c.is_alphanumeric() || c == '_' {
+                        end = i + c.len_utf8();
+                        chars.next();
                     } else {
                         break;
                     }
@@ -168,10 +171,7 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                 let mut end = idx + 1;
 
                 while let Some(&(i, c)) = chars.peek() {
-                    if c.is_alphanumeric() || c == '_' || c == ' ' {
-                        end = i + c.len_utf8();
-                        chars.next();
-                    } else if c == '{' {
+                    if c == '{' {
                         chars.next();
                         end = i + 1;
                         while let Some(&(i2, c2)) = chars.peek() {
@@ -182,6 +182,9 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                             }
                         }
                         break;
+                    } else if c.is_alphanumeric() || c == '_' {
+                        end = i + c.len_utf8();
+                        chars.next();
                     } else {
                         break;
                     }
@@ -192,14 +195,45 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                 builder.push(line, col, length, TOKEN_TIMER);
             }
 
-            // Line comment: -- ...
+            // Line comment: -- ... OR YAML front matter: ---
             '-' => {
+                let is_line_start = idx == 0 || content.as_bytes().get(idx.saturating_sub(1)) == Some(&b'\n');
+
                 if let Some(&(_, '-')) = chars.peek() {
                     let start = idx;
                     chars.next();
-                    let mut end = idx + 2;
 
-                    // Read until end of line
+                    // Check for YAML front matter (--- at start of line)
+                    if is_line_start {
+                        if let Some(&(_, '-')) = chars.peek() {
+                            chars.next();
+                            // This is ---, check if it's only dashes until end of line
+                            let mut is_yaml_delimiter = true;
+                            let mut end = idx + 3;
+
+                            while let Some(&(i, c)) = chars.peek() {
+                                if c == '\n' {
+                                    break;
+                                }
+                                if c != '-' && !c.is_whitespace() {
+                                    is_yaml_delimiter = false;
+                                }
+                                end = i + c.len_utf8();
+                                chars.next();
+                            }
+
+                            if is_yaml_delimiter {
+                                // Highlight the --- line as metadata
+                                let (line, col) = line_index.line_col(start as u32);
+                                let length = line_index.utf16_len(start, end);
+                                builder.push(line, col, length, TOKEN_METADATA_KEY);
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Regular comment: --
+                    let mut end = idx + 2;
                     while let Some(&(i, c)) = chars.peek() {
                         if c == '\n' {
                             break;
@@ -214,29 +248,33 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                 }
             }
 
-            // Section: = Section Name =
+            // Section: = Section Name = (must start at beginning of line)
             '=' => {
-                // Check if this is a section header (starts line or after whitespace)
-                let start = idx;
-                let mut end = idx + 1;
-                let mut found_closing = false;
+                // Check if this is at the start of a line
+                let is_line_start = idx == 0 || content.as_bytes().get(idx.saturating_sub(1)) == Some(&b'\n');
 
-                while let Some(&(i, c)) = chars.peek() {
-                    if c == '\n' {
-                        break;
-                    }
-                    end = i + c.len_utf8();
-                    chars.next();
-                    if c == '=' {
-                        found_closing = true;
-                        break;
-                    }
-                }
+                if is_line_start {
+                    let start = idx;
+                    let mut end = idx + 1;
+                    let mut found_closing = false;
 
-                if found_closing {
-                    let (line, col) = line_index.line_col(start as u32);
-                    let length = line_index.utf16_len(start, end);
-                    builder.push(line, col, length, TOKEN_SECTION);
+                    while let Some(&(i, c)) = chars.peek() {
+                        if c == '\n' {
+                            break;
+                        }
+                        end = i + c.len_utf8();
+                        chars.next();
+                        if c == '=' {
+                            found_closing = true;
+                            break;
+                        }
+                    }
+
+                    if found_closing {
+                        let (line, col) = line_index.line_col(start as u32);
+                        let length = line_index.utf16_len(start, end);
+                        builder.push(line, col, length, TOKEN_SECTION);
+                    }
                 }
             }
 

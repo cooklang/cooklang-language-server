@@ -175,7 +175,12 @@ enum CompletionContext {
 }
 
 fn find_completion_context(text: &str) -> Option<CompletionContext> {
-    let chars: Vec<char> = text.chars().collect();
+    // Limit backward scan to last 200 characters for performance
+    const MAX_SCAN: usize = 200;
+    let scan_start = text.len().saturating_sub(MAX_SCAN);
+    let scan_text = &text[scan_start..];
+
+    let chars: Vec<char> = scan_text.chars().collect();
     let len = chars.len();
 
     // Scan backwards to find context

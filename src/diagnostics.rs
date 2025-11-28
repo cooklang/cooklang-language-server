@@ -5,30 +5,30 @@ use crate::document::Document;
 use crate::utils::position::span_to_range;
 
 pub fn get_diagnostics(doc: &Document) -> Vec<Diagnostic> {
-    let Some(ref parse_result) = doc.parse_result else {
-        return vec![Diagnostic {
-            range: tower_lsp::lsp_types::Range::default(),
-            severity: Some(DiagnosticSeverity::ERROR),
-            source: Some("cooklang".into()),
-            message: "Failed to parse recipe".into(),
-            ..Default::default()
-        }];
-    };
-
     let mut diagnostics = Vec::new();
 
-    // Convert errors
-    for error in &parse_result.errors {
+    // Always use document-level errors/warnings (available even when parse fails)
+    for error in &doc.parse_errors {
         if let Some(diag) = convert_source_diag(error, &doc.line_index) {
             diagnostics.push(diag);
         }
     }
 
-    // Convert warnings
-    for warning in &parse_result.warnings {
+    for warning in &doc.parse_warnings {
         if let Some(diag) = convert_source_diag(warning, &doc.line_index) {
             diagnostics.push(diag);
         }
+    }
+
+    // If no parse result and no specific errors, show a generic message
+    if doc.parse_result.is_none() && diagnostics.is_empty() {
+        diagnostics.push(Diagnostic {
+            range: tower_lsp::lsp_types::Range::default(),
+            severity: Some(DiagnosticSeverity::ERROR),
+            source: Some("cooklang".into()),
+            message: "Failed to parse recipe".into(),
+            ..Default::default()
+        });
     }
 
     diagnostics

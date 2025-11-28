@@ -37,11 +37,15 @@ pub fn get_hover(doc: &Document, params: &HoverParams) -> Option<Hover> {
             format!("**Cookware:** {}", name)
         }
         ElementType::Timer => {
-            // Find matching timer
+            // Find matching timer by name or duration
+            let name = extract_name(&element_text);
             for timer in &parse_result.recipe.timers {
-                return Some(create_hover(format_timer_hover(timer)));
+                let timer_name = timer.name.as_ref().map(|n| n.as_str()).unwrap_or("");
+                if timer_name.eq_ignore_ascii_case(&name) || name.is_empty() {
+                    return Some(create_hover(format_timer_hover(timer)));
+                }
             }
-            "**Timer**".to_string()
+            format!("**Timer:** {}", if name.is_empty() { "unnamed" } else { &name })
         }
         ElementType::Section => {
             format!("**Section:** {}", element_text.trim_matches('=').trim())

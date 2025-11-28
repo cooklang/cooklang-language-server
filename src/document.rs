@@ -12,6 +12,10 @@ pub struct Document {
     pub content: String,
     pub line_index: LineIndex,
     pub parse_result: Option<ParseResult>,
+    /// Errors from parsing, stored even if parse completely failed
+    pub parse_errors: Vec<SourceDiag>,
+    /// Warnings from parsing
+    pub parse_warnings: Vec<SourceDiag>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +34,8 @@ impl Document {
             content,
             line_index,
             parse_result: None,
+            parse_errors: Vec::new(),
+            parse_warnings: Vec::new(),
         };
         doc.reparse();
         doc
@@ -51,6 +57,10 @@ impl Document {
         let errors: Vec<_> = report.errors().cloned().collect();
         let warnings: Vec<_> = report.warnings().cloned().collect();
 
+        // Always store errors and warnings at document level
+        self.parse_errors = errors.clone();
+        self.parse_warnings = warnings.clone();
+
         // Get the recipe output if available
         if let Some(recipe) = result.output().cloned() {
             self.parse_result = Some(ParseResult {
@@ -59,7 +69,7 @@ impl Document {
                 warnings,
             });
         } else {
-            // Store errors even if parsing failed
+            // Clear parse result but errors are still in parse_errors
             self.parse_result = None;
         }
     }
