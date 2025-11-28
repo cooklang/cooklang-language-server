@@ -1,0 +1,48 @@
+[package]
+name = "cooklang-language-server"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Language Server Protocol implementation for Cooklang"
+repository = "https://github.com/cooklang/cooklang-language-server"
+keywords = ["cooklang", "lsp", "language-server", "recipes"]
+categories = ["development-tools", "text-editors"]
+
+[dependencies]
+# LSP
+tower-lsp = "0.20"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Cooklang
+cooklang = "0.17"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+dashmap = "6"
+ropey = "1.6"
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"
+
+[[bin]]
+name = "cooklang-lsp"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
