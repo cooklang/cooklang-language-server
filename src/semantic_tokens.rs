@@ -128,7 +128,7 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                 }
 
                 let (line, col) = line_index.line_col(start as u32);
-                let length = (end - start) as u32;
+                let length = line_index.utf16_len(start, end);
                 builder.push(line, col, length, TOKEN_INGREDIENT);
             }
 
@@ -158,7 +158,7 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                 }
 
                 let (line, col) = line_index.line_col(start as u32);
-                let length = (end - start) as u32;
+                let length = line_index.utf16_len(start, end);
                 builder.push(line, col, length, TOKEN_COOKWARE);
             }
 
@@ -188,7 +188,7 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                 }
 
                 let (line, col) = line_index.line_col(start as u32);
-                let length = (end - start) as u32;
+                let length = line_index.utf16_len(start, end);
                 builder.push(line, col, length, TOKEN_TIMER);
             }
 
@@ -209,7 +209,7 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                     }
 
                     let (line, col) = line_index.line_col(start as u32);
-                    let length = (end - start) as u32;
+                    let length = line_index.utf16_len(start, end);
                     builder.push(line, col, length, TOKEN_COMMENT);
                 }
             }
@@ -235,7 +235,7 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
 
                 if found_closing {
                     let (line, col) = line_index.line_col(start as u32);
-                    let length = (end - start) as u32;
+                    let length = line_index.utf16_len(start, end);
                     builder.push(line, col, length, TOKEN_SECTION);
                 }
             }
@@ -257,7 +257,7 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
                     }
 
                     let (line, col) = line_index.line_col(start as u32);
-                    let length = (end - start) as u32;
+                    let length = line_index.utf16_len(start, end);
                     builder.push(line, col, length, TOKEN_METADATA_KEY);
                 }
             }
