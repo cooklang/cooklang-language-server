@@ -177,7 +177,9 @@ enum CompletionContext {
 fn find_completion_context(text: &str) -> Option<CompletionContext> {
     // Limit backward scan to last 200 characters for performance
     const MAX_SCAN: usize = 200;
-    let scan_start = text.len().saturating_sub(MAX_SCAN);
+    let byte_start = text.len().saturating_sub(MAX_SCAN);
+    // Find valid UTF-8 char boundary at or after byte_start
+    let scan_start = text.ceil_char_boundary(byte_start);
     let scan_text = &text[scan_start..];
 
     let chars: Vec<char> = scan_text.chars().collect();
@@ -230,7 +232,7 @@ fn find_completion_context(text: &str) -> Option<CompletionContext> {
                         '@' | '#' | '~' => {
                             let inside: String = chars[i + 1..].iter().collect();
                             if inside.contains('%') {
-                                let after_percent: String = inside.split('%').last().unwrap_or("").to_string();
+                                let after_percent: String = inside.split('%').next_back().unwrap_or("").to_string();
                                 return Some(CompletionContext::Unit(after_percent.trim().to_string()));
                             }
                             return Some(CompletionContext::Quantity);

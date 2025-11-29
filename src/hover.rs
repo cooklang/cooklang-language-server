@@ -40,7 +40,7 @@ pub fn get_hover(doc: &Document, params: &HoverParams) -> Option<Hover> {
             // Find matching timer by name or duration
             let name = extract_name(&element_text);
             for timer in &parse_result.recipe.timers {
-                let timer_name = timer.name.as_ref().map(|n| n.as_str()).unwrap_or("");
+                let timer_name = timer.name.as_deref().unwrap_or("");
                 if timer_name.eq_ignore_ascii_case(&name) || name.is_empty() {
                     return Some(create_hover(format_timer_hover(timer)));
                 }
@@ -72,40 +72,13 @@ enum ElementType {
 }
 
 fn find_element_at_offset(content: &str, offset: usize) -> Option<(ElementType, String)> {
-    let bytes = content.as_bytes();
-    let len = bytes.len();
+    let len = content.len();
 
     if offset >= len {
         return None;
     }
 
-    // Look backwards to find the start of an element
-    let mut start = offset;
-    while start > 0 {
-        let ch = bytes[start - 1];
-        match ch {
-            b'@' => {
-                // Found ingredient start
-                let end = find_element_end(content, start);
-                return Some((
-                    ElementType::Ingredient,
-                    content[start - 1..end].to_string(),
-                ));
-            }
-            b'#' => {
-                let end = find_element_end(content, start);
-                return Some((ElementType::Cookware, content[start - 1..end].to_string()));
-            }
-            b'~' => {
-                let end = find_element_end(content, start);
-                return Some((ElementType::Timer, content[start - 1..end].to_string()));
-            }
-            b'\n' | b'\r' => break,
-            _ => start -= 1,
-        }
-    }
-
-    // Check if we're on a special line
+    // Find line boundaries (these operations are UTF-8 safe)
     let line_start = content[..offset].rfind('\n').map(|i| i + 1).unwrap_or(0);
     let line_end = content[offset..]
         .find('\n')
@@ -113,69 +86,74 @@ fn find_element_at_offset(content: &str, offset: usize) -> Option<(ElementType, 
         .unwrap_or(len);
     let line = &content[line_start..line_end];
 
+    // Check if we're on a special line first
     if line.starts_with("--") {
         return Some((ElementType::Comment, line.to_string()));
     }
     if line.starts_with(">>") {
         return Some((ElementType::Metadata, line.to_string()));
     }
-    if line.starts_with('=') && line.ends_with('=') {
+    if line.starts_with('=') && line.ends_with('=') && line.len() > 1 {
         return Some((ElementType::Section, line.to_string()));
     }
 
-    // Check if cursor is inside an element
-    let before = &content[line_start..offset];
-    if let Some(at_pos) = before.rfind('@') {
-        if !before[at_pos..].contains('}') {
-            let end = find_element_end(content, line_start + at_pos + 1);
-            return Some((
-                ElementType::Ingredient,
-                content[line_start + at_pos..end].to_string(),
-            ));
+    // Get the text before cursor on this line
+    let before_cursor = &content[line_start..offset];
+
+    // Look for element markers (@, #, ~) scanning backwards
+    // Use rfind which is UTF-8 safe and returns char boundaries
+    let markers = [
+        ('@', ElementType::Ingredient),
+        ('#', ElementType::Cookware),
+        ('~', ElementType::Timer),
+    ];
+
+    let mut best_match: Option<(usize, ElementType)> = None;
+
+    for (marker, elem_type) in markers {
+        if let Some(pos) = before_cursor.rfind(marker) {
+            // Check we're not past a closing brace (element already complete)
+            let after_marker = &before_cursor[pos..];
+            if !after_marker.contains('}') {
+                // This marker is still open, check if it's the closest one
+                match best_match {
+                    None => best_match = Some((line_start + pos, elem_type)),
+                    Some((best_pos, _)) if line_start + pos > best_pos => {
+                        best_match = Some((line_start + pos, elem_type));
+                    }
+                    _ => {}
+                }
+            }
         }
     }
-    if let Some(hash_pos) = before.rfind('#') {
-        if !before[hash_pos..].contains('}') {
-            let end = find_element_end(content, line_start + hash_pos + 1);
-            return Some((
-                ElementType::Cookware,
-                content[line_start + hash_pos..end].to_string(),
-            ));
-        }
-    }
-    if let Some(tilde_pos) = before.rfind('~') {
-        if !before[tilde_pos..].contains('}') {
-            let end = find_element_end(content, line_start + tilde_pos + 1);
-            return Some((
-                ElementType::Timer,
-                content[line_start + tilde_pos..end].to_string(),
-            ));
-        }
+
+    if let Some((marker_pos, elem_type)) = best_match {
+        let end = find_element_end(content, marker_pos + 1);
+        return Some((elem_type, content[marker_pos..end].to_string()));
     }
 
     None
 }
 
 fn find_element_end(content: &str, start: usize) -> usize {
-    let bytes = content.as_bytes();
-    let mut pos = start;
     let mut in_braces = false;
 
-    while pos < bytes.len() {
-        match bytes[pos] {
-            b'{' => in_braces = true,
-            b'}' => return pos + 1,
-            b' ' | b'\n' | b'\r' if !in_braces => return pos,
+    // Iterate by chars to handle UTF-8 properly
+    for (i, ch) in content[start..].char_indices() {
+        let pos = start + i;
+        match ch {
+            '{' => in_braces = true,
+            '}' => return pos + 1,
+            ' ' | '\n' | '\r' if !in_braces => return pos,
             _ => {}
         }
-        pos += 1;
     }
-    pos
+    content.len()
 }
 
 fn extract_name(element: &str) -> String {
     // Remove @ # ~ prefix and extract name before {
-    let s = element.trim_start_matches(|c| c == '@' || c == '#' || c == '~');
+    let s = element.trim_start_matches(['@', '#', '~']);
     s.split('{').next().unwrap_or(s).trim().to_string()
 }
 

@@ -21,8 +21,6 @@ pub struct Document {
 #[derive(Debug, Clone)]
 pub struct ParseResult {
     pub recipe: Recipe,
-    pub errors: Vec<SourceDiag>,
-    pub warnings: Vec<SourceDiag>,
 }
 
 impl Document {
@@ -54,23 +52,10 @@ impl Document {
 
         // Get errors and warnings from the report
         let report = result.report();
-        let errors: Vec<_> = report.errors().cloned().collect();
-        let warnings: Vec<_> = report.warnings().cloned().collect();
-
-        // Always store errors and warnings at document level
-        self.parse_errors = errors.clone();
-        self.parse_warnings = warnings.clone();
+        self.parse_errors = report.errors().cloned().collect();
+        self.parse_warnings = report.warnings().cloned().collect();
 
         // Get the recipe output if available
-        if let Some(recipe) = result.output().cloned() {
-            self.parse_result = Some(ParseResult {
-                recipe,
-                errors,
-                warnings,
-            });
-        } else {
-            // Clear parse result but errors are still in parse_errors
-            self.parse_result = None;
-        }
+        self.parse_result = result.output().cloned().map(|recipe| ParseResult { recipe });
     }
 }
