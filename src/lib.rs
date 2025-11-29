@@ -7,7 +7,9 @@ mod completion;
 mod hover;
 mod symbols;
 pub mod utils;
+pub mod lsp;
 
 pub use backend::Backend;
 pub use state::ServerState;
 pub use document::Document;
+pub use lsp::LineEndings;
