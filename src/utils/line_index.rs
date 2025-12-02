@@ -1,0 +1,275 @@
+use text_size::TextSize;
+
+/// Maps byte offsets to LSP positions (line/column in UTF-16 code units).
+///
+/// This implementation follows rust-analyzer's patterns for proper UTF-16
+/// position handling, which is required by the LSP specification.
+#[derive(Debug, Clone)]
+pub struct LineIndex {
+    /// Byte offset of the start of each line
+    line_starts: Vec<u32>,
+    /// The source text for UTF-16 conversion
+    text: String,
+}
+
+impl LineIndex {
+    pub fn new(text: &str) -> Self {
+        let mut line_starts = vec![0];
+        for (idx, byte) in text.bytes().enumerate() {
+            if byte == b'\n' {
+                line_starts.push((idx + 1) as u32);
+            }
+        }
+        Self {
+            line_starts,
+            text: text.to_string(),
+        }
+    }
+
+    /// Convert byte offset to (line, column) where column is in UTF-8 bytes.
+    /// Use `utf8_to_utf16_col` to convert to UTF-16 for LSP.
+    pub fn line_col(&self, byte_offset: u32) -> (u32, u32) {
+        let byte_offset = byte_offset as usize;
+        let line = self
+            .line_starts
+            .partition_point(|&start| (start as usize) <= byte_offset)
+            .saturating_sub(1);
+        let line_start = self.line_starts[line] as usize;
+        let col = (byte_offset - line_start) as u32;
+        (line as u32, col)
+    }
+
+    /// Convert UTF-8 byte column to UTF-16 code unit column.
+    pub fn utf8_to_utf16_col(&self, line: u32, utf8_col: u32) -> u32 {
+        let line_start = self.line_starts.get(line as usize).copied().unwrap_or(0) as usize;
+        let col_end = line_start + utf8_col as usize;
+        let line_text = &self.text[line_start..col_end.min(self.text.len())];
+        line_text.encode_utf16().count() as u32
+    }
+
+    /// Convert UTF-16 column to UTF-8 byte column.
+    pub fn utf16_to_utf8_col(&self, line: u32, utf16_col: u32) -> Option<u32> {
+        let line_start = self.line_starts.get(line as usize).copied()? as usize;
+        let line_end = self
+            .line_starts
+            .get(line as usize + 1)
+            .map(|&end| (end as usize).saturating_sub(1))
+            .unwrap_or(self.text.len());
+
+        let line_text = &self.text[line_start..line_end];
+
+        let mut utf16_count = 0u32;
+        let mut byte_offset = 0usize;
+
+        for ch in line_text.chars() {
+            if utf16_count >= utf16_col {
+                break;
+            }
+            utf16_count += ch.len_utf16() as u32;
+            byte_offset += ch.len_utf8();
+        }
+
+        Some(byte_offset as u32)
+    }
+
+    /// Get the byte offset of the start of a line.
+    pub fn line_start(&self, line: u32) -> Option<TextSize> {
+        self.line_starts
+            .get(line as usize)
+            .copied()
+            .map(TextSize::from)
+    }
+
+    /// Convert (line, column in UTF-16 code units) to byte offset.
+    pub fn offset(&self, line: u32, utf16_col: u32) -> u32 {
+        let line_start = self
+            .line_starts
+            .get(line as usize)
+            .copied()
+            .unwrap_or(self.text.len() as u32) as usize;
+
+        let utf8_col = self.utf16_to_utf8_col(line, utf16_col).unwrap_or(0);
+        (line_start as u32) + utf8_col
+    }
+
+    /// Get byte offset to UTF-16 length for a byte range (for semantic tokens).
+    pub fn utf16_len(&self, byte_start: usize, byte_end: usize) -> u32 {
+        let text = &self.text[byte_start.min(self.text.len())..byte_end.min(self.text.len())];
+        text.encode_utf16().count() as u32
+    }
+
+    /// Get the byte range for a line.
+    pub fn line_range(&self, line: u32) -> std::ops::Range<u32> {
+        let start = self
+            .line_starts
+            .get(line as usize)
+            .copied()
+            .unwrap_or(self.text.len() as u32);
+        let end = self
+            .line_starts
+            .get(line as usize + 1)
+            .copied()
+            .unwrap_or(self.text.len() as u32);
+        start..end
+    }
+
+    /// Get total number of lines.
+    pub fn line_count(&self) -> u32 {
+        self.line_starts.len() as u32
+    }
+
+    /// Get total number of lines (for compatibility).
+    pub fn len(&self) -> usize {
+        self.line_starts.len()
+    }
+
+    /// Check if the text is empty.
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+
+    /// Get the total length of the text in bytes.
+    pub fn text_len(&self) -> TextSize {
+        TextSize::from(self.text.len() as u32)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_line_index_ascii() {
+        let text = "line1\nline2\nline3";
+        let index = LineIndex::new(text);
+
+        // line_col returns (line, utf8_byte_col)
+        assert_eq!(index.line_col(0), (0, 0));
+        assert_eq!(index.line_col(5), (0, 5));
+        assert_eq!(index.line_col(6), (1, 0));
+        assert_eq!(index.line_col(11), (1, 5));
+        assert_eq!(index.line_col(12), (2, 0));
+    }
+
+    #[test]
+    fn test_offset_conversion_ascii() {
+        let text = "line1\nline2\nline3";
+        let index = LineIndex::new(text);
+
+        // offset takes UTF-16 column and returns byte offset
+        assert_eq!(index.offset(0, 0), 0);
+        assert_eq!(index.offset(1, 0), 6);
+        assert_eq!(index.offset(2, 0), 12);
+        assert_eq!(index.offset(2, 5), 17);
+    }
+
+    #[test]
+    fn test_utf8_multibyte() {
+        // "Café" - é is 2 bytes in UTF-8, 1 UTF-16 code unit
+        let text = "Café";
+        let index = LineIndex::new(text);
+
+        // line_col returns UTF-8 byte columns
+        // Byte offsets: C=0, a=1, f=2, é=3-4
+        assert_eq!(index.line_col(0), (0, 0)); // C
+        assert_eq!(index.line_col(1), (0, 1)); // a
+        assert_eq!(index.line_col(2), (0, 2)); // f
+        assert_eq!(index.line_col(3), (0, 3)); // é start (byte 3)
+        assert_eq!(index.line_col(5), (0, 5)); // after é (byte 5)
+
+        // utf8_to_utf16_col converts UTF-8 byte column to UTF-16
+        assert_eq!(index.utf8_to_utf16_col(0, 0), 0); // C
+        assert_eq!(index.utf8_to_utf16_col(0, 3), 3); // é start
+        assert_eq!(index.utf8_to_utf16_col(0, 5), 4); // after é
+    }
+
+    #[test]
+    fn test_utf8_emoji() {
+        // 🍳 is 4 bytes in UTF-8, 2 UTF-16 code units (surrogate pair)
+        let text = "A🍳B";
+        let index = LineIndex::new(text);
+
+        // line_col returns UTF-8 byte columns
+        // Byte offsets: A=0, 🍳=1-4, B=5
+        assert_eq!(index.line_col(0), (0, 0)); // A
+        assert_eq!(index.line_col(1), (0, 1)); // 🍳 start
+        assert_eq!(index.line_col(5), (0, 5)); // B
+
+        // UTF-16 conversion
+        assert_eq!(index.utf8_to_utf16_col(0, 0), 0); // A
+        assert_eq!(index.utf8_to_utf16_col(0, 1), 1); // 🍳 start
+        assert_eq!(index.utf8_to_utf16_col(0, 5), 3); // B (after 2-unit emoji)
+    }
+
+    #[test]
+    fn test_utf16_len() {
+        let text = "Café🍳";
+        let index = LineIndex::new(text);
+
+        // "Caf" = 3 UTF-16 units
+        assert_eq!(index.utf16_len(0, 3), 3);
+        // "é" = 1 UTF-16 unit (2 bytes)
+        assert_eq!(index.utf16_len(3, 5), 1);
+        // "🍳" = 2 UTF-16 units (4 bytes, surrogate pair)
+        assert_eq!(index.utf16_len(5, 9), 2);
+    }
+
+    #[test]
+    fn test_offset_from_utf16() {
+        let text = "Café";
+        let index = LineIndex::new(text);
+
+        // offset takes UTF-16 column and returns byte offset
+        assert_eq!(index.offset(0, 0), 0); // C
+        assert_eq!(index.offset(0, 1), 1); // a
+        assert_eq!(index.offset(0, 2), 2); // f
+        assert_eq!(index.offset(0, 3), 3); // é
+        assert_eq!(index.offset(0, 4), 5); // end
+    }
+
+    #[test]
+    fn test_utf16_to_utf8_col() {
+        let text = "Café";
+        let index = LineIndex::new(text);
+
+        assert_eq!(index.utf16_to_utf8_col(0, 0), Some(0)); // C
+        assert_eq!(index.utf16_to_utf8_col(0, 3), Some(3)); // é start
+        assert_eq!(index.utf16_to_utf8_col(0, 4), Some(5)); // after é
+    }
+
+    #[test]
+    fn test_empty_text() {
+        let text = "";
+        let index = LineIndex::new(text);
+        assert_eq!(index.line_col(0), (0, 0));
+        assert_eq!(index.line_count(), 1);
+    }
+
+    #[test]
+    fn test_chinese_characters() {
+        // 中文 - each character is 3 bytes in UTF-8, 1 UTF-16 code unit
+        let text = "中文";
+        let index = LineIndex::new(text);
+
+        // line_col returns UTF-8 byte columns
+        assert_eq!(index.line_col(0), (0, 0)); // 中 start
+        assert_eq!(index.line_col(3), (0, 3)); // 文 start
+        assert_eq!(index.line_col(6), (0, 6)); // end
+
+        // UTF-16 conversion
+        assert_eq!(index.utf8_to_utf16_col(0, 0), 0);
+        assert_eq!(index.utf8_to_utf16_col(0, 3), 1);
+        assert_eq!(index.utf8_to_utf16_col(0, 6), 2);
+    }
+
+    #[test]
+    fn test_line_start() {
+        let text = "line1\nline2\nline3";
+        let index = LineIndex::new(text);
+
+        assert_eq!(index.line_start(0), Some(TextSize::from(0)));
+        assert_eq!(index.line_start(1), Some(TextSize::from(6)));
+        assert_eq!(index.line_start(2), Some(TextSize::from(12)));
+        assert_eq!(index.line_start(3), None);
+    }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "cooklang",
+  "displayName": "Cooklang",
+  "description": "Language support for Cooklang recipe files",
+  "version": "0.1.0",
+  "publisher": "cooklang",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "activationEvents": [
+    "onLanguage:cooklang"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "cooklang",
+        "aliases": ["Cooklang", "cooklang"],
+        "extensions": [".cook"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Cooklang",
+      "properties": {
+        "cooklang.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the cooklang-lsp executable. If empty, searches PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
