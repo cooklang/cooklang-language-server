@@ -253,7 +253,7 @@ fn complete_ingredients(prefix: &str, doc: &Document, state: &ServerState) -> Ve
     let mut items = Vec::new();
     let prefix_lower = prefix.to_lowercase();
 
-    // Add existing ingredients from current document
+    // Add existing ingredients from current document (highest priority)
     if let Some(ref result) = doc.parse_result {
         for ingredient in &result.recipe.ingredients {
             let name = &ingredient.name;
@@ -292,7 +292,35 @@ fn complete_ingredients(prefix: &str, doc: &Document, state: &ServerState) -> Ve
         }
     }
 
-    // Add common ingredients
+    // Add ingredients from aisle.conf (user's grocery list)
+    for aisle_ingredient in state.get_aisle_ingredients() {
+        if aisle_ingredient.name.to_lowercase().starts_with(&prefix_lower)
+            && !items.iter().any(|i| i.label == aisle_ingredient.name)
+        {
+            // Show alias info if this is not the common name
+            let detail = if aisle_ingredient.name != aisle_ingredient.common_name {
+                format!(
+                    "{} (alias for {})",
+                    aisle_ingredient.category, aisle_ingredient.common_name
+                )
+            } else {
+                aisle_ingredient.category.clone()
+            };
+
+            items.push(CompletionItem {
+                label: aisle_ingredient.name.clone(),
+                kind: Some(CompletionItemKind::VARIABLE),
+                detail: Some(detail),
+                documentation: Some(Documentation::String(format!(
+                    "From aisle.conf - {}",
+                    aisle_ingredient.category
+                ))),
+                ..Default::default()
+            });
+        }
+    }
+
+    // Add common ingredients (lowest priority fallback)
     for &ingredient in COMMON_INGREDIENTS {
         if ingredient.to_lowercase().starts_with(&prefix_lower)
             && !items.iter().any(|i| i.label == ingredient)

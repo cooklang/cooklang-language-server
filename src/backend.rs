@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
@@ -12,6 +14,8 @@ use crate::symbols;
 pub struct Backend {
     client: Client,
     state: ServerState,
+    /// Workspace root path for loading configuration files
+    workspace_root: std::sync::RwLock<Option<PathBuf>>,
 }
 
 impl Backend {
@@ -19,6 +23,16 @@ impl Backend {
         Self {
             client,
             state: ServerState::new(),
+            workspace_root: std::sync::RwLock::new(None),
+        }
+    }
+
+    /// Try to load aisle.conf from the workspace
+    fn load_aisle_config(&self) {
+        if let Ok(guard) = self.workspace_root.read() {
+            if let Some(ref path) = *guard {
+                self.state.load_aisle_config(path);
+            }
         }
     }
 
@@ -37,7 +51,29 @@ impl Backend {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        // Extract workspace root from initialization params
+        let workspace_path = params
+            .workspace_folders
+            .as_ref()
+            .and_then(|folders| folders.first())
+            .and_then(|folder| folder.uri.to_file_path().ok())
+            .or_else(|| {
+                #[allow(deprecated)]
+                params.root_uri.as_ref().and_then(|uri| uri.to_file_path().ok())
+            })
+            .or_else(|| {
+                #[allow(deprecated)]
+                params.root_path.as_ref().map(PathBuf::from)
+            });
+
+        if let Some(path) = workspace_path {
+            tracing::info!("Workspace root: {:?}", path);
+            if let Ok(mut guard) = self.workspace_root.write() {
+                *guard = Some(path);
+            }
+        }
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -75,6 +111,10 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _: InitializedParams) {
         tracing::info!("Cooklang LSP initialized");
+
+        // Load aisle.conf if available in workspace
+        self.load_aisle_config();
+
         self.client
             .log_message(MessageType::INFO, "Cooklang Language Server initialized")
             .await;
