@@ -43,55 +43,10 @@ static TIME_UNITS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|
     parse_unit_pairs(include_str!("../data/time_units.txt"))
 });
 
-/// Common cookware items
-const COMMON_COOKWARE: &[&str] = &[
-    "pot",
-    "pan",
-    "skillet",
-    "saucepan",
-    "wok",
-    "dutch oven",
-    "stockpot",
-    "frying pan",
-    "bowl",
-    "mixing bowl",
-    "large bowl",
-    "small bowl",
-    "cutting board",
-    "knife",
-    "chef's knife",
-    "paring knife",
-    "oven",
-    "stove",
-    "grill",
-    "blender",
-    "food processor",
-    "mixer",
-    "stand mixer",
-    "whisk",
-    "spatula",
-    "wooden spoon",
-    "ladle",
-    "tongs",
-    "colander",
-    "strainer",
-    "sieve",
-    "baking sheet",
-    "baking dish",
-    "roasting pan",
-    "casserole dish",
-    "measuring cup",
-    "measuring spoons",
-    "rolling pin",
-    "grater",
-    "peeler",
-    "can opener",
-    "thermometer",
-    "timer",
-    "foil",
-    "parchment paper",
-    "plastic wrap",
-];
+/// Common cookware items (loaded from embedded data/cookware.txt)
+static COMMON_COOKWARE: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    parse_simple_list(include_str!("../data/cookware.txt"))
+});
 
 /// Common ingredients for suggestions
 const COMMON_INGREDIENTS: &[&str] = &[
@@ -346,7 +301,7 @@ fn complete_cookware(prefix: &str, doc: &Document) -> Vec<CompletionItem> {
     }
 
     // Add common cookware
-    for &cookware in COMMON_COOKWARE {
+    for &cookware in COMMON_COOKWARE.iter() {
         if cookware.to_lowercase().starts_with(&prefix_lower)
             && !items.iter().any(|i| i.label == cookware)
         {
