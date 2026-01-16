@@ -7,6 +7,29 @@ use crate::document::Document;
 use crate::state::ServerState;
 use crate::utils::position::position_to_offset;
 
+/// Parse unit pairs from embedded data (format: "short = long")
+fn parse_unit_pairs(data: &'static str) -> Vec<(&'static str, &'static str)> {
+    data.lines()
+        .filter(|line| !line.trim().is_empty() && !line.trim().starts_with('#'))
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('=').map(|s| s.trim()).collect();
+            if parts.len() == 2 {
+                Some((parts[0], parts[1]))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Parse simple list from embedded data (one item per line)
+fn parse_simple_list(data: &'static str) -> Vec<&'static str> {
+    data.lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect()
+}
+
 /// Common cooking units
 const UNITS: &[(&str, &str)] = &[
     ("g", "grams"),
