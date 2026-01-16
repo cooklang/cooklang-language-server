@@ -1,0 +1,36 @@
+# Weight units
+g = grams
+kg = kilograms
+mg = milligrams
+
+# Volume units
+ml = milliliters
+l = liters
+
+# Imperial units
+oz = ounces
+lb = pounds
+
+# Cooking measurements
+cup = cups
+cups = cups
+tbsp = tablespoons
+tsp = teaspoons
+
+# Count/portion units
+pinch = pinch
+clove = cloves
+cloves = cloves
+slice = slices
+slices = slices
+piece = pieces
+pieces = pieces
+bunch = bunches
+sprig = sprigs
+
+# Container units
+can = cans
+jar = jars
+packet = packets
+head = heads
+stalk = stalks
