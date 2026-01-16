@@ -1,0 +1,50 @@
+# Basics
+salt
+pepper
+olive oil
+vegetable oil
+butter
+water
+
+# Aromatics
+garlic
+onion
+
+# Broths
+chicken broth
+beef broth
+
+# Baking
+flour
+sugar
+eggs
+milk
+cream
+
+# Dairy
+cheese
+
+# Produce
+tomato
+lemon
+lime
+
+# Herbs
+parsley
+cilantro
+basil
+oregano
+thyme
+rosemary
+
+# Spices
+cumin
+paprika
+cinnamon
+
+# Flavor enhancers
+vanilla
+honey
+soy sauce
+vinegar
+wine
