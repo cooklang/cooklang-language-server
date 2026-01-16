@@ -48,42 +48,10 @@ static COMMON_COOKWARE: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     parse_simple_list(include_str!("../data/cookware.txt"))
 });
 
-/// Common ingredients for suggestions
-const COMMON_INGREDIENTS: &[&str] = &[
-    "salt",
-    "pepper",
-    "olive oil",
-    "vegetable oil",
-    "butter",
-    "garlic",
-    "onion",
-    "water",
-    "chicken broth",
-    "beef broth",
-    "flour",
-    "sugar",
-    "eggs",
-    "milk",
-    "cream",
-    "cheese",
-    "tomato",
-    "lemon",
-    "lime",
-    "parsley",
-    "cilantro",
-    "basil",
-    "oregano",
-    "thyme",
-    "rosemary",
-    "cumin",
-    "paprika",
-    "cinnamon",
-    "vanilla",
-    "honey",
-    "soy sauce",
-    "vinegar",
-    "wine",
-];
+/// Common ingredients for suggestions (loaded from embedded data/ingredients.txt)
+static COMMON_INGREDIENTS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    parse_simple_list(include_str!("../data/ingredients.txt"))
+});
 
 pub fn get_completions(
     doc: &Document,
@@ -265,7 +233,7 @@ fn complete_ingredients(prefix: &str, doc: &Document, state: &ServerState) -> Ve
     }
 
     // Add common ingredients (lowest priority fallback)
-    for &ingredient in COMMON_INGREDIENTS {
+    for &ingredient in COMMON_INGREDIENTS.iter() {
         if ingredient.to_lowercase().starts_with(&prefix_lower)
             && !items.iter().any(|i| i.label == ingredient)
         {
