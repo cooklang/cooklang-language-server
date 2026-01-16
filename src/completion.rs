@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
     Documentation, InsertTextFormat,
@@ -32,34 +33,10 @@ fn parse_simple_list(data: &'static str) -> Vec<&'static str> {
         .collect()
 }
 
-/// Common cooking units
-const UNITS: &[(&str, &str)] = &[
-    ("g", "grams"),
-    ("kg", "kilograms"),
-    ("mg", "milligrams"),
-    ("ml", "milliliters"),
-    ("l", "liters"),
-    ("oz", "ounces"),
-    ("lb", "pounds"),
-    ("cup", "cups"),
-    ("cups", "cups"),
-    ("tbsp", "tablespoons"),
-    ("tsp", "teaspoons"),
-    ("pinch", "pinch"),
-    ("clove", "cloves"),
-    ("cloves", "cloves"),
-    ("slice", "slices"),
-    ("slices", "slices"),
-    ("piece", "pieces"),
-    ("pieces", "pieces"),
-    ("bunch", "bunches"),
-    ("sprig", "sprigs"),
-    ("can", "cans"),
-    ("jar", "jars"),
-    ("packet", "packets"),
-    ("head", "heads"),
-    ("stalk", "stalks"),
-];
+/// Common cooking units (loaded from embedded data/units.txt)
+static UNITS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
+    parse_unit_pairs(include_str!("../data/units.txt"))
+});
 
 /// Common time units
 const TIME_UNITS: &[(&str, &str)] = &[
