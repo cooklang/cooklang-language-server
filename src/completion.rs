@@ -10,13 +10,15 @@ use crate::utils::position::position_to_offset;
 /// Parse unit pairs from embedded data (format: "short = long")
 fn parse_unit_pairs(data: &'static str) -> Vec<(&'static str, &'static str)> {
     data.lines()
-        .filter(|line| !line.trim().is_empty() && !line.trim().starts_with('#'))
         .filter_map(|line| {
-            let parts: Vec<&str> = line.split('=').map(|s| s.trim()).collect();
-            if parts.len() == 2 {
-                Some((parts[0], parts[1]))
-            } else {
-                None
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                return None;
+            }
+            let mut parts = trimmed.split('=').map(|s| s.trim());
+            match (parts.next(), parts.next()) {
+                (Some(short), Some(long)) if parts.next().is_none() => Some((short, long)),
+                _ => None,
             }
         })
         .collect()
