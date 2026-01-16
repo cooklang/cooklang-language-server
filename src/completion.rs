@@ -38,23 +38,10 @@ static UNITS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
     parse_unit_pairs(include_str!("../data/units.txt"))
 });
 
-/// Common time units
-const TIME_UNITS: &[(&str, &str)] = &[
-    ("s", "seconds"),
-    ("sec", "seconds"),
-    ("secs", "seconds"),
-    ("second", "seconds"),
-    ("seconds", "seconds"),
-    ("min", "minutes"),
-    ("mins", "minutes"),
-    ("minute", "minutes"),
-    ("minutes", "minutes"),
-    ("h", "hours"),
-    ("hr", "hours"),
-    ("hrs", "hours"),
-    ("hour", "hours"),
-    ("hours", "hours"),
-];
+/// Common time units (loaded from embedded data/time_units.txt)
+static TIME_UNITS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
+    parse_unit_pairs(include_str!("../data/time_units.txt"))
+});
 
 /// Common cookware items
 const COMMON_COOKWARE: &[&str] = &[
