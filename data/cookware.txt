@@ -1,0 +1,67 @@
+# Cooking vessels
+pot
+pan
+skillet
+saucepan
+wok
+dutch oven
+stockpot
+frying pan
+
+# Mixing bowls
+bowl
+mixing bowl
+large bowl
+small bowl
+
+# Cutting tools
+cutting board
+knife
+chef's knife
+paring knife
+
+# Heat sources
+oven
+stove
+grill
+
+# Powered appliances
+blender
+food processor
+mixer
+stand mixer
+
+# Hand tools
+whisk
+spatula
+wooden spoon
+ladle
+tongs
+
+# Straining
+colander
+strainer
+sieve
+
+# Baking
+baking sheet
+baking dish
+roasting pan
+casserole dish
+
+# Measuring
+measuring cup
+measuring spoons
+
+# Other tools
+rolling pin
+grater
+peeler
+can opener
+thermometer
+timer
+
+# Supplies
+foil
+parchment paper
+plastic wrap
