@@ -34,7 +34,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dashmap = "6"
 ropey = "1.6"
 
-# Text handling (from rust-analyzer patterns)
+# Text handling
 text-size = "1.1"
 nohash-hasher = "0.2"
 
