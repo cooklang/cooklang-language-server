@@ -1,0 +1,19 @@
+# Seconds
+s = seconds
+sec = seconds
+secs = seconds
+second = seconds
+seconds = seconds
+
+# Minutes
+min = minutes
+mins = minutes
+minute = minutes
+minutes = minutes
+
+# Hours
+h = hours
+hr = hours
+hrs = hours
+hour = hours
+hours = hours
