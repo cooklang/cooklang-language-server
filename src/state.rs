@@ -26,30 +26,31 @@ pub struct AisleConfig {
 
 impl AisleConfig {
     /// Parse an aisle.conf file content and create an owned AisleConfig
+    /// Uses lenient parsing to skip errors and continue with valid entries
     pub fn parse(content: &str) -> Option<Self> {
-        match cooklang::aisle::parse(content) {
-            Ok(aisle_conf) => {
-                let mut ingredients = Vec::new();
-                for category in &aisle_conf.categories {
-                    for ingredient in &category.ingredients {
-                        if let Some(common_name) = ingredient.names.first() {
-                            for name in &ingredient.names {
-                                ingredients.push(AisleIngredient {
-                                    name: name.to_string(),
-                                    common_name: common_name.to_string(),
-                                    category: category.name.to_string(),
-                                });
-                            }
-                        }
+        let result = cooklang::aisle::parse_lenient(content);
+        let (aisle_conf, warnings) = result.into_result().ok()?;
+
+        // Log any warnings from lenient parsing
+        for warning in warnings.iter() {
+            tracing::warn!("aisle.conf warning: {}", warning);
+        }
+
+        let mut ingredients = Vec::new();
+        for category in &aisle_conf.categories {
+            for ingredient in &category.ingredients {
+                if let Some(common_name) = ingredient.names.first() {
+                    for name in &ingredient.names {
+                        ingredients.push(AisleIngredient {
+                            name: name.to_string(),
+                            common_name: common_name.to_string(),
+                            category: category.name.to_string(),
+                        });
                     }
                 }
-                Some(AisleConfig { ingredients })
-            }
-            Err(e) => {
-                tracing::warn!("Failed to parse aisle.conf: {:?}", e);
-                None
             }
         }
+        Some(AisleConfig { ingredients })
     }
 
     /// Load aisle.conf from a workspace path
@@ -184,5 +185,46 @@ cheese|cheddar|parmesan
             .unwrap();
         assert_eq!(cheddar.category, "dairy");
         assert_eq!(cheddar.common_name, "cheese");
+    }
+
+    #[test]
+    fn test_aisle_config_lenient_parsing() {
+        // This content has errors: duplicate ingredient 'apple', orphan ingredient, duplicate category
+        let content = r#"
+orphan ingredient before any category
+[produce]
+apple
+banana
+apple
+
+[dairy]
+milk
+
+[produce]
+carrot
+"#;
+        // With lenient parsing, this should still succeed and return valid entries
+        let config = AisleConfig::parse(content).unwrap();
+
+        // Should have parsed the valid categories and ingredients
+        assert!(!config.ingredients.is_empty());
+
+        // Check that apple is present (first occurrence kept)
+        let apple = config.ingredients.iter().find(|i| i.name == "apple");
+        assert!(apple.is_some());
+        assert_eq!(apple.unwrap().category, "produce");
+
+        // Check that banana is present
+        let banana = config.ingredients.iter().find(|i| i.name == "banana");
+        assert!(banana.is_some());
+
+        // Check that milk is present
+        let milk = config.ingredients.iter().find(|i| i.name == "milk");
+        assert!(milk.is_some());
+        assert_eq!(milk.unwrap().category, "dairy");
+
+        // Duplicate apple entries should be skipped (only one apple)
+        let apple_count = config.ingredients.iter().filter(|i| i.name == "apple").count();
+        assert_eq!(apple_count, 1);
     }
 }
