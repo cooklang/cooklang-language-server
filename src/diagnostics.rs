@@ -1,4 +1,4 @@
-use cooklang::error::{SourceDiag, Severity};
+use cooklang::error::{Severity, SourceDiag};
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};
 
 use crate::document::Document;

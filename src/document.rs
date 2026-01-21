@@ -1,5 +1,5 @@
-use cooklang::{CooklangParser, Extensions, Recipe};
 use cooklang::error::SourceDiag;
+use cooklang::{CooklangParser, Extensions, Recipe};
 use tower_lsp::lsp_types::Url;
 
 use crate::utils::line_index::LineIndex;
@@ -56,6 +56,9 @@ impl Document {
         self.parse_warnings = report.warnings().cloned().collect();
 
         // Get the recipe output if available
-        self.parse_result = result.output().cloned().map(|recipe| ParseResult { recipe });
+        self.parse_result = result
+            .output()
+            .cloned()
+            .map(|recipe| ParseResult { recipe });
     }
 }

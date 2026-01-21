@@ -60,7 +60,10 @@ impl LanguageServer for Backend {
             .and_then(|folder| folder.uri.to_file_path().ok())
             .or_else(|| {
                 #[allow(deprecated)]
-                params.root_uri.as_ref().and_then(|uri| uri.to_file_path().ok())
+                params
+                    .root_uri
+                    .as_ref()
+                    .and_then(|uri| uri.to_file_path().ok())
             })
             .or_else(|| {
                 #[allow(deprecated)]

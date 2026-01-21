@@ -49,9 +49,7 @@ pub fn span_to_range(
 }
 
 /// Severity conversion from cooklang to LSP.
-pub fn diagnostic_severity(
-    severity: cooklang::error::Severity,
-) -> lsp_types::DiagnosticSeverity {
+pub fn diagnostic_severity(severity: cooklang::error::Severity) -> lsp_types::DiagnosticSeverity {
     match severity {
         cooklang::error::Severity::Error => lsp_types::DiagnosticSeverity::ERROR,
         cooklang::error::Severity::Warning => lsp_types::DiagnosticSeverity::WARNING,

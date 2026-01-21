@@ -10,13 +10,13 @@ const TOKEN_INGREDIENT: u32 = 0;
 const TOKEN_COOKWARE: u32 = 1;
 const TOKEN_TIMER: u32 = 2;
 #[allow(dead_code)]
-const TOKEN_QUANTITY: u32 = 3;  // Reserved for future use
+const TOKEN_QUANTITY: u32 = 3; // Reserved for future use
 #[allow(dead_code)]
-const TOKEN_UNIT: u32 = 4;  // Reserved for future use
+const TOKEN_UNIT: u32 = 4; // Reserved for future use
 const TOKEN_COMMENT: u32 = 5;
 const TOKEN_METADATA_KEY: u32 = 6;
 #[allow(dead_code)]
-const TOKEN_METADATA_VALUE: u32 = 7;  // Reserved for future use
+const TOKEN_METADATA_VALUE: u32 = 7; // Reserved for future use
 const TOKEN_SECTION: u32 = 8;
 
 pub const TOKEN_TYPES: &[SemanticTokenType] = &[
@@ -197,7 +197,8 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
 
             // Line comment: -- ... OR YAML front matter: ---
             '-' => {
-                let is_line_start = idx == 0 || content.as_bytes().get(idx.saturating_sub(1)) == Some(&b'\n');
+                let is_line_start =
+                    idx == 0 || content.as_bytes().get(idx.saturating_sub(1)) == Some(&b'\n');
 
                 if let Some(&(_, '-')) = chars.peek() {
                     let start = idx;
@@ -251,7 +252,8 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
             // Section: = Section Name = (must start at beginning of line)
             '=' => {
                 // Check if this is at the start of a line
-                let is_line_start = idx == 0 || content.as_bytes().get(idx.saturating_sub(1)) == Some(&b'\n');
+                let is_line_start =
+                    idx == 0 || content.as_bytes().get(idx.saturating_sub(1)) == Some(&b'\n');
 
                 if is_line_start {
                     let start = idx;

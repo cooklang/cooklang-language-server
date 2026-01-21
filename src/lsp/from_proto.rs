@@ -40,12 +40,10 @@ pub fn offset(
     // Convert the column based on encoding
     let col_offset = match encoding {
         PositionEncoding::Utf8 => TextSize::from(col),
-        PositionEncoding::Utf16 => {
-            line_index
-                .utf16_to_utf8_col(line, col)
-                .map(TextSize::from)
-                .ok_or_else(|| format_err!("Invalid UTF-16 column {} on line {}", col, line))?
-        }
+        PositionEncoding::Utf16 => line_index
+            .utf16_to_utf8_col(line, col)
+            .map(TextSize::from)
+            .ok_or_else(|| format_err!("Invalid UTF-16 column {} on line {}", col, line))?,
     };
 
     Ok(line_start + col_offset)

@@ -45,17 +45,21 @@ pub fn get_hover(doc: &Document, params: &HoverParams) -> Option<Hover> {
                     return Some(create_hover(format_timer_hover(timer)));
                 }
             }
-            format!("**Timer:** {}", if name.is_empty() { "unnamed" } else { &name })
+            format!(
+                "**Timer:** {}",
+                if name.is_empty() { "unnamed" } else { &name }
+            )
         }
         ElementType::Section => {
             format!("**Section:** {}", element_text.trim_matches('=').trim())
         }
         ElementType::Metadata => {
-            format!("**Metadata:** {}", element_text.trim_start_matches('>').trim())
+            format!(
+                "**Metadata:** {}",
+                element_text.trim_start_matches('>').trim()
+            )
         }
-        ElementType::Comment => {
-            "**Comment**".to_string()
-        }
+        ElementType::Comment => "**Comment**".to_string(),
     };
 
     Some(create_hover(hover_text))

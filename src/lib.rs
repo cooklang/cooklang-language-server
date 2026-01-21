@@ -1,15 +1,15 @@
 mod backend;
-mod state;
-mod document;
-mod diagnostics;
-mod semantic_tokens;
 mod completion;
+mod diagnostics;
+mod document;
 mod hover;
+pub mod lsp;
+mod semantic_tokens;
+mod state;
 mod symbols;
 pub mod utils;
-pub mod lsp;
 
 pub use backend::Backend;
-pub use state::ServerState;
 pub use document::Document;
 pub use lsp::LineEndings;
+pub use state::ServerState;

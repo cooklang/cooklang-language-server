@@ -34,24 +34,20 @@ fn parse_simple_list(data: &'static str) -> Vec<&'static str> {
 }
 
 /// Common cooking units (loaded from embedded data/units.txt)
-static UNITS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
-    parse_unit_pairs(include_str!("../data/units.txt"))
-});
+static UNITS: LazyLock<Vec<(&'static str, &'static str)>> =
+    LazyLock::new(|| parse_unit_pairs(include_str!("../data/units.txt")));
 
 /// Common time units (loaded from embedded data/time_units.txt)
-static TIME_UNITS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
-    parse_unit_pairs(include_str!("../data/time_units.txt"))
-});
+static TIME_UNITS: LazyLock<Vec<(&'static str, &'static str)>> =
+    LazyLock::new(|| parse_unit_pairs(include_str!("../data/time_units.txt")));
 
 /// Common cookware items (loaded from embedded data/cookware.txt)
-static COMMON_COOKWARE: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
-    parse_simple_list(include_str!("../data/cookware.txt"))
-});
+static COMMON_COOKWARE: LazyLock<Vec<&'static str>> =
+    LazyLock::new(|| parse_simple_list(include_str!("../data/cookware.txt")));
 
 /// Common ingredients for suggestions (loaded from embedded data/ingredients.txt)
-static COMMON_INGREDIENTS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
-    parse_simple_list(include_str!("../data/ingredients.txt"))
-});
+static COMMON_INGREDIENTS: LazyLock<Vec<&'static str>> =
+    LazyLock::new(|| parse_simple_list(include_str!("../data/ingredients.txt")));
 
 pub fn get_completions(
     doc: &Document,
@@ -144,8 +140,11 @@ fn find_completion_context(text: &str) -> Option<CompletionContext> {
                         '@' | '#' | '~' => {
                             let inside: String = chars[i + 1..].iter().collect();
                             if inside.contains('%') {
-                                let after_percent: String = inside.split('%').next_back().unwrap_or("").to_string();
-                                return Some(CompletionContext::Unit(after_percent.trim().to_string()));
+                                let after_percent: String =
+                                    inside.split('%').next_back().unwrap_or("").to_string();
+                                return Some(CompletionContext::Unit(
+                                    after_percent.trim().to_string(),
+                                ));
                             }
                             return Some(CompletionContext::Quantity);
                         }
@@ -174,8 +173,8 @@ fn complete_ingredients(prefix: &str, doc: &Document, state: &ServerState) -> Ve
                     label: name.clone(),
                     kind: Some(CompletionItemKind::VARIABLE),
                     detail: Some("Ingredient (from recipe)".into()),
-                    insert_text: Some(format!("{}{{}}", name)),
-                    insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
+                    insert_text: Some(format!("{}{{$0}}", name)),
+                    insert_text_format: Some(InsertTextFormat::SNIPPET),
                     ..Default::default()
                 });
             }
@@ -197,6 +196,8 @@ fn complete_ingredients(prefix: &str, doc: &Document, state: &ServerState) -> Ve
                         label: name.clone(),
                         kind: Some(CompletionItemKind::VARIABLE),
                         detail: Some("Ingredient (from workspace)".into()),
+                        insert_text: Some(format!("{}{{$0}}", name)),
+                        insert_text_format: Some(InsertTextFormat::SNIPPET),
                         ..Default::default()
                     });
                 }
@@ -206,7 +207,10 @@ fn complete_ingredients(prefix: &str, doc: &Document, state: &ServerState) -> Ve
 
     // Add ingredients from aisle.conf (user's grocery list)
     for aisle_ingredient in state.get_aisle_ingredients() {
-        if aisle_ingredient.name.to_lowercase().starts_with(&prefix_lower)
+        if aisle_ingredient
+            .name
+            .to_lowercase()
+            .starts_with(&prefix_lower)
             && !items.iter().any(|i| i.label == aisle_ingredient.name)
         {
             // Show alias info if this is not the common name
@@ -227,6 +231,8 @@ fn complete_ingredients(prefix: &str, doc: &Document, state: &ServerState) -> Ve
                     "From aisle.conf - {}",
                     aisle_ingredient.category
                 ))),
+                insert_text: Some(format!("{}{{$0}}", aisle_ingredient.name)),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
                 ..Default::default()
             });
         }
@@ -241,6 +247,8 @@ fn complete_ingredients(prefix: &str, doc: &Document, state: &ServerState) -> Ve
                 label: ingredient.into(),
                 kind: Some(CompletionItemKind::VARIABLE),
                 detail: Some("Common ingredient".into()),
+                insert_text: Some(format!("{}{{$0}}", ingredient)),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
                 ..Default::default()
             });
         }
@@ -262,6 +270,8 @@ fn complete_cookware(prefix: &str, doc: &Document) -> Vec<CompletionItem> {
                     label: name.clone(),
                     kind: Some(CompletionItemKind::CLASS),
                     detail: Some("Cookware (from recipe)".into()),
+                    insert_text: Some(format!("{}{{$0}}", name)),
+                    insert_text_format: Some(InsertTextFormat::SNIPPET),
                     ..Default::default()
                 });
             }
@@ -277,6 +287,8 @@ fn complete_cookware(prefix: &str, doc: &Document) -> Vec<CompletionItem> {
                 label: cookware.into(),
                 kind: Some(CompletionItemKind::CLASS),
                 detail: Some("Common cookware".into()),
+                insert_text: Some(format!("{}{{$0}}", cookware)),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
                 ..Default::default()
             });
         }
