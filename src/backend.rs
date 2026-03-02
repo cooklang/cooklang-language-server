@@ -96,6 +96,8 @@ impl LanguageServer for Backend {
                         "~".into(),
                         "%".into(),
                         "{".into(),
+                        ".".into(),
+                        "/".into(),
                     ]),
                     resolve_provider: Some(false),
                     ..Default::default()
@@ -163,9 +165,14 @@ impl LanguageServer for Backend {
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = &params.text_document_position.text_document.uri;
+        let workspace_root = self
+            .workspace_root
+            .read()
+            .ok()
+            .and_then(|guard| guard.clone());
 
         let response = if let Some(doc) = self.state.get_document(uri) {
-            completion::get_completions(&doc, &params, &self.state)
+            completion::get_completions(&doc, &params, &self.state, workspace_root.as_deref())
         } else {
             None
         };

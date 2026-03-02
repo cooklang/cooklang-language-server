@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::LazyLock;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
@@ -53,6 +54,7 @@ pub fn get_completions(
     doc: &Document,
     params: &CompletionParams,
     state: &ServerState,
+    workspace_root: Option<&Path>,
 ) -> Option<CompletionResponse> {
     let offset = position_to_offset(params.text_document_position.position, &doc.line_index);
     let text_before = &doc.content[..offset.min(doc.content.len())];
@@ -65,6 +67,13 @@ pub fn get_completions(
         CompletionContext::Timer => complete_timer_units(),
         CompletionContext::Unit(prefix) => complete_units(&prefix),
         CompletionContext::Quantity => complete_quantity_snippets(),
+        CompletionContext::RecipeReference(prefix) => {
+            if let Some(root) = workspace_root {
+                complete_recipe_references(&prefix, root)
+            } else {
+                vec![]
+            }
+        }
     };
 
     Some(CompletionResponse::List(CompletionList {
@@ -75,11 +84,12 @@ pub fn get_completions(
 
 #[derive(Debug)]
 enum CompletionContext {
-    Ingredient(String), // After @
-    Cookware(String),   // After #
-    Timer,              // After ~
-    Unit(String),       // After % or in quantity
-    Quantity,           // Inside {} after number
+    Ingredient(String),      // After @
+    Cookware(String),        // After #
+    Timer,                   // After ~
+    Unit(String),            // After % or in quantity
+    Quantity,                // Inside {} after number
+    RecipeReference(String), // After @. (file path reference)
 }
 
 fn find_completion_context(text: &str) -> Option<CompletionContext> {
@@ -104,9 +114,12 @@ fn find_completion_context(text: &str) -> Option<CompletionContext> {
                         // Inside braces - could be quantity context
                         return Some(CompletionContext::Quantity);
                     }
-                    return Some(CompletionContext::Ingredient(
-                        prefix.split('{').next().unwrap_or("").to_string(),
-                    ));
+                    let name_prefix = prefix.split('{').next().unwrap_or("").to_string();
+                    // Check if this is a recipe/menu file reference (starts with ./ or ../)
+                    if name_prefix.starts_with('.') {
+                        return Some(CompletionContext::RecipeReference(name_prefix));
+                    }
+                    return Some(CompletionContext::Ingredient(name_prefix));
                 }
                 return None;
             }
@@ -257,6 +270,71 @@ fn complete_ingredients(prefix: &str, doc: &Document, state: &ServerState) -> Ve
     items
 }
 
+/// Scan a directory recursively for .cook and .menu files
+fn scan_recipe_files(root: &Path) -> Vec<(String, &'static str)> {
+    let mut files = Vec::new();
+    scan_dir_recursive(root, root, &mut files);
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files
+}
+
+fn scan_dir_recursive(root: &Path, dir: &Path, files: &mut Vec<(String, &'static str)>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            // Skip hidden directories
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if !name.starts_with('.') {
+                    scan_dir_recursive(root, &path, files);
+                }
+            }
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            let kind = match ext {
+                "cook" => "Recipe",
+                "menu" => "Menu",
+                _ => continue,
+            };
+            if let Ok(rel) = path.strip_prefix(root) {
+                // Normalize path separators to forward slash and remove extension
+                let rel_str = rel.to_string_lossy();
+                let without_ext = rel_str
+                    .strip_suffix(&format!(".{}", ext))
+                    .unwrap_or(&rel_str);
+                // Use forward slashes for consistency
+                let normalized = without_ext.replace('\\', "/");
+                files.push((format!("./{}", normalized), kind));
+            }
+        }
+    }
+}
+
+fn complete_recipe_references(prefix: &str, workspace_root: &Path) -> Vec<CompletionItem> {
+    let files = scan_recipe_files(workspace_root);
+    let prefix_lower = prefix.to_lowercase();
+
+    files
+        .into_iter()
+        .filter(|(path, _)| path.to_lowercase().starts_with(&prefix_lower))
+        .map(|(path, kind)| {
+            let display_name = path.rsplit('/').next().unwrap_or(&path);
+            CompletionItem {
+                label: path.clone(),
+                kind: Some(CompletionItemKind::FILE),
+                detail: Some(format!("{} reference", kind)),
+                documentation: Some(Documentation::String(display_name.to_string())),
+                insert_text: Some(format!("{}{{$0}}", path)),
+                insert_text_format: Some(InsertTextFormat::SNIPPET),
+                ..Default::default()
+            }
+        })
+        .collect()
+}
+
 fn complete_cookware(prefix: &str, doc: &Document) -> Vec<CompletionItem> {
     let mut items = Vec::new();
     let prefix_lower = prefix.to_lowercase();
@@ -359,4 +437,117 @@ fn complete_quantity_snippets() -> Vec<CompletionItem> {
             ..Default::default()
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_context_recipe_reference_dot() {
+        let ctx = find_completion_context("Pour over with @.").unwrap();
+        assert!(matches!(ctx, CompletionContext::RecipeReference(ref p) if p == "."));
+    }
+
+    #[test]
+    fn test_context_recipe_reference_dot_slash() {
+        let ctx = find_completion_context("Pour over with @./").unwrap();
+        assert!(matches!(ctx, CompletionContext::RecipeReference(ref p) if p == "./"));
+    }
+
+    #[test]
+    fn test_context_recipe_reference_path() {
+        let ctx = find_completion_context("Pour over with @./sauces/Hol").unwrap();
+        assert!(matches!(ctx, CompletionContext::RecipeReference(ref p) if p == "./sauces/Hol"));
+    }
+
+    #[test]
+    fn test_context_recipe_reference_parent() {
+        let ctx = find_completion_context("@../other/Recipe").unwrap();
+        assert!(matches!(ctx, CompletionContext::RecipeReference(ref p) if p == "../other/Recipe"));
+    }
+
+    #[test]
+    fn test_context_recipe_reference_with_brace_is_quantity() {
+        let ctx = find_completion_context("@./sauces/Hollandaise{").unwrap();
+        assert!(matches!(ctx, CompletionContext::Quantity));
+    }
+
+    #[test]
+    fn test_context_regular_ingredient_unchanged() {
+        let ctx = find_completion_context("@sal").unwrap();
+        assert!(matches!(ctx, CompletionContext::Ingredient(ref p) if p == "sal"));
+    }
+
+    #[test]
+    fn test_scan_recipe_files() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Create directory structure
+        fs::create_dir_all(root.join("sauces")).unwrap();
+        fs::create_dir_all(root.join(".hidden")).unwrap();
+
+        // Create recipe files
+        fs::write(root.join("Pancakes.cook"), "").unwrap();
+        fs::write(root.join("sauces/Hollandaise.cook"), "").unwrap();
+        fs::write(root.join("sauces/Bechamel.cook"), "").unwrap();
+        fs::write(root.join("WeeklyMenu.menu"), "").unwrap();
+        fs::write(root.join("notes.txt"), "").unwrap();
+        fs::write(root.join(".hidden/Secret.cook"), "").unwrap();
+
+        let files = scan_recipe_files(root);
+        let paths: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
+
+        assert!(paths.contains(&"./Pancakes"));
+        assert!(paths.contains(&"./sauces/Hollandaise"));
+        assert!(paths.contains(&"./sauces/Bechamel"));
+        assert!(paths.contains(&"./WeeklyMenu"));
+
+        // Should not include non-recipe files
+        assert!(!paths.iter().any(|p| p.contains("notes")));
+        // Should not include hidden directory files
+        assert!(!paths.iter().any(|p| p.contains("Secret")));
+
+        // Check kinds
+        let menu = files.iter().find(|(p, _)| p == "./WeeklyMenu").unwrap();
+        assert_eq!(menu.1, "Menu");
+
+        let recipe = files.iter().find(|(p, _)| p == "./Pancakes").unwrap();
+        assert_eq!(recipe.1, "Recipe");
+    }
+
+    #[test]
+    fn test_complete_recipe_references_filtering() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        fs::create_dir_all(root.join("sauces")).unwrap();
+        fs::write(root.join("sauces/Hollandaise.cook"), "").unwrap();
+        fs::write(root.join("sauces/Bechamel.cook"), "").unwrap();
+        fs::write(root.join("Pancakes.cook"), "").unwrap();
+
+        // Filter by prefix
+        let items = complete_recipe_references("./sauces/H", root);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label, "./sauces/Hollandaise");
+        assert_eq!(
+            items[0].insert_text.as_deref(),
+            Some("./sauces/Hollandaise{$0}")
+        );
+
+        // All sauces
+        let items = complete_recipe_references("./sauces/", root);
+        assert_eq!(items.len(), 2);
+
+        // Everything
+        let items = complete_recipe_references("./", root);
+        assert_eq!(items.len(), 3);
+
+        // Just dot
+        let items = complete_recipe_references(".", root);
+        assert_eq!(items.len(), 3);
+    }
 }
