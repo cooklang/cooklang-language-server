@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "cooklang-language-server"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "cooklang",
