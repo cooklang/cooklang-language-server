@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionList, CompletionParams, CompletionResponse,
-    Documentation, InsertTextFormat,
+    CompletionTextEdit, Documentation, InsertTextFormat, Position, Range, TextEdit,
 };
 
 use crate::document::Document;
@@ -69,7 +69,21 @@ pub fn get_completions(
         CompletionContext::Quantity => complete_quantity_snippets(),
         CompletionContext::RecipeReference(prefix) => {
             if let Some(root) = workspace_root {
-                complete_recipe_references(&prefix, root)
+                // Calculate the range from after '@' to cursor so the client
+                // knows exactly what text to replace (. and / break word
+                // boundaries, so without an explicit range the client can't
+                // match or place completions correctly).
+                let after_at_offset = offset - prefix.len();
+                let (line, utf8_col) = doc.line_index.line_col(after_at_offset as u32);
+                let utf16_col = doc.line_index.utf8_to_utf16_col(line, utf8_col);
+                let replace_range = Range {
+                    start: Position {
+                        line,
+                        character: utf16_col,
+                    },
+                    end: params.text_document_position.position,
+                };
+                complete_recipe_references(&prefix, root, replace_range)
             } else {
                 vec![]
             }
@@ -313,7 +327,11 @@ fn scan_dir_recursive(root: &Path, dir: &Path, files: &mut Vec<(String, &'static
     }
 }
 
-fn complete_recipe_references(prefix: &str, workspace_root: &Path) -> Vec<CompletionItem> {
+fn complete_recipe_references(
+    prefix: &str,
+    workspace_root: &Path,
+    replace_range: Range,
+) -> Vec<CompletionItem> {
     let files = scan_recipe_files(workspace_root);
     let prefix_lower = prefix.to_lowercase();
 
@@ -327,7 +345,11 @@ fn complete_recipe_references(prefix: &str, workspace_root: &Path) -> Vec<Comple
                 kind: Some(CompletionItemKind::FILE),
                 detail: Some(format!("{} reference", kind)),
                 documentation: Some(Documentation::String(display_name.to_string())),
-                insert_text: Some(format!("{}{{$0}}", path)),
+                filter_text: Some(path.clone()),
+                text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                    range: replace_range,
+                    new_text: format!("{}{{$0}}", path),
+                })),
                 insert_text_format: Some(InsertTextFormat::SNIPPET),
                 ..Default::default()
             }
@@ -529,25 +551,40 @@ mod tests {
         fs::write(root.join("sauces/Bechamel.cook"), "").unwrap();
         fs::write(root.join("Pancakes.cook"), "").unwrap();
 
+        // Dummy range for tests
+        let range = Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 0,
+            },
+        };
+
         // Filter by prefix
-        let items = complete_recipe_references("./sauces/H", root);
+        let items = complete_recipe_references("./sauces/H", root, range);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].label, "./sauces/Hollandaise");
-        assert_eq!(
-            items[0].insert_text.as_deref(),
-            Some("./sauces/Hollandaise{$0}")
-        );
+        // text_edit should contain the snippet
+        match &items[0].text_edit {
+            Some(CompletionTextEdit::Edit(edit)) => {
+                assert_eq!(edit.new_text, "./sauces/Hollandaise{$0}");
+            }
+            _ => panic!("Expected text_edit"),
+        }
 
         // All sauces
-        let items = complete_recipe_references("./sauces/", root);
+        let items = complete_recipe_references("./sauces/", root, range);
         assert_eq!(items.len(), 2);
 
         // Everything
-        let items = complete_recipe_references("./", root);
+        let items = complete_recipe_references("./", root, range);
         assert_eq!(items.len(), 3);
 
         // Just dot
-        let items = complete_recipe_references(".", root);
+        let items = complete_recipe_references(".", root, range);
         assert_eq!(items.len(), 3);
     }
 }
