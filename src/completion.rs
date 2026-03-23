@@ -327,6 +327,60 @@ fn scan_dir_recursive(root: &Path, dir: &Path, files: &mut Vec<(String, &'static
     }
 }
 
+/// Fuzzy match for file paths. Splits on `/` — non-final query segments must
+/// prefix-match target segments in order; the final query segment is
+/// subsequence-matched against the target filename. Both strings should
+/// already be lowercased.
+fn fuzzy_match(query: &str, target: &str) -> bool {
+    // Just "." means match everything (current directory prefix)
+    if query == "." || query == "./" {
+        return true;
+    }
+
+    let query_segments: Vec<&str> = query.split('/').collect();
+    let target_segments: Vec<&str> = target.split('/').collect();
+
+    if query_segments.is_empty() || target_segments.is_empty() {
+        return query_segments.is_empty();
+    }
+
+    let last_q = query_segments.len() - 1;
+    let mut t_idx = 0;
+
+    for (q_idx, q_seg) in query_segments.iter().enumerate() {
+        if q_idx == last_q {
+            // Last query segment: subsequence match against the filename
+            let filename = target_segments.last().unwrap_or(&"");
+            return subsequence_match(q_seg, filename);
+        }
+        // Non-final segments must prefix-match a target segment in order
+        let mut found = false;
+        while t_idx < target_segments.len() {
+            if target_segments[t_idx].starts_with(q_seg) {
+                t_idx += 1;
+                found = true;
+                break;
+            }
+            t_idx += 1;
+        }
+        if !found {
+            return false;
+        }
+    }
+    true
+}
+
+/// Simple subsequence check: all chars of `needle` appear in order in `haystack`.
+fn subsequence_match(needle: &str, haystack: &str) -> bool {
+    let mut chars = needle.chars().peekable();
+    for c in haystack.chars() {
+        if chars.peek() == Some(&c) {
+            chars.next();
+        }
+    }
+    chars.peek().is_none()
+}
+
 fn complete_recipe_references(
     prefix: &str,
     workspace_root: &Path,
@@ -337,7 +391,7 @@ fn complete_recipe_references(
 
     files
         .into_iter()
-        .filter(|(path, _)| path.to_lowercase().starts_with(&prefix_lower))
+        .filter(|(path, _)| fuzzy_match(&prefix_lower, &path.to_lowercase()))
         .map(|(path, kind)| {
             let display_name = path.rsplit('/').next().unwrap_or(&path);
             CompletionItem {
@@ -563,8 +617,8 @@ mod tests {
             },
         };
 
-        // Filter by prefix
-        let items = complete_recipe_references("./sauces/H", root, range);
+        // Filter by directory + partial filename (fuzzy on filename)
+        let items = complete_recipe_references("./sauces/Hol", root, range);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].label, "./sauces/Hollandaise");
         // text_edit should contain the snippet
@@ -586,5 +640,34 @@ mod tests {
         // Just dot
         let items = complete_recipe_references(".", root, range);
         assert_eq!(items.len(), 3);
+
+        // Fuzzy match across path segments
+        let items = complete_recipe_references("./hol", root, range);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label, "./sauces/Hollandaise");
+
+        // Fuzzy match - short query
+        let items = complete_recipe_references("./pan", root, range);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].label, "./Pancakes");
+    }
+
+    #[test]
+    fn test_fuzzy_match() {
+        // Fuzzy on filename (last segment of target)
+        assert!(fuzzy_match("./hol", "./sauces/hollandaise"));
+        assert!(fuzzy_match("./pan", "./pancakes"));
+        assert!(fuzzy_match("./", "./anything"));
+        assert!(fuzzy_match(".", "./anything"));
+        // No match
+        assert!(!fuzzy_match("./xyz", "./pancakes"));
+        // Directory prefix + fuzzy filename
+        assert!(fuzzy_match("./sauces/hol", "./sauces/hollandaise"));
+        assert!(fuzzy_match("./sauces/b", "./sauces/bechamel"));
+        // Wrong directory excludes results
+        assert!(!fuzzy_match("./sauces/p", "./pancakes"));
+        // Subsequence within filename
+        assert!(fuzzy_match("./bml", "./sauces/bechamel"));
+        assert!(!fuzzy_match("./zz", "./sauces/bechamel"));
     }
 }
