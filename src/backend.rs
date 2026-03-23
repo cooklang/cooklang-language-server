@@ -169,7 +169,14 @@ impl LanguageServer for Backend {
             .workspace_root
             .read()
             .ok()
-            .and_then(|guard| guard.clone());
+            .and_then(|guard| guard.clone())
+            .or_else(|| {
+                // Fall back to the document's parent directory when no workspace root
+                // is provided (e.g. when launched via cookcli web)
+                uri.to_file_path()
+                    .ok()
+                    .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            });
 
         let response = if let Some(doc) = self.state.get_document(uri) {
             completion::get_completions(&doc, &params, &self.state, workspace_root.as_deref())
