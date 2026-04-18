@@ -105,6 +105,13 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 semantic_tokens_provider: Some(semantic_tokens::capabilities()),
+                workspace: Some(WorkspaceServerCapabilities {
+                    workspace_folders: Some(WorkspaceFoldersServerCapabilities {
+                        supported: Some(true),
+                        change_notifications: Some(OneOf::Left(true)),
+                    }),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -128,6 +135,29 @@ impl LanguageServer for Backend {
     async fn shutdown(&self) -> Result<()> {
         tracing::info!("Cooklang LSP shutting down");
         Ok(())
+    }
+
+    async fn did_change_workspace_folders(&self, params: DidChangeWorkspaceFoldersParams) {
+        // Prefer the first "added" folder, fall back to dropping the root when
+        // all workspaces were removed.
+        let new_root = params
+            .event
+            .added
+            .first()
+            .and_then(|folder| folder.uri.to_file_path().ok());
+
+        if let Ok(mut guard) = self.workspace_root.write() {
+            match (&new_root, guard.as_ref()) {
+                (Some(new), Some(current)) if new == current => return,
+                (None, None) => return,
+                _ => {}
+            }
+            tracing::info!("Workspace root changed to: {:?}", new_root);
+            *guard = new_root;
+        }
+
+        // Reload aisle.conf for the new workspace (or clear it if the root is gone).
+        self.load_aisle_config();
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
