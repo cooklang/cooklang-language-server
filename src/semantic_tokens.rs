@@ -3,8 +3,10 @@ use tower_lsp::lsp_types::{
     SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities,
 };
 
+use std::collections::HashMap;
+
 use crate::document::Document;
-use crate::utils::component::component_end;
+use crate::utils::components::{scan_components, ComponentKind};
 
 // Token type indices
 const TOKEN_INGREDIENT: u32 = 0;
@@ -110,43 +112,35 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
     let content = &doc.content;
     let line_index = &doc.line_index;
 
+    // Components (ingredients, cookware, timers) come straight from the parser
+    // so their spans match how the recipe parses, keyed by their start offset.
+    let components: HashMap<usize, _> = scan_components(content)
+        .into_iter()
+        .map(|c| (c.span.start(), c))
+        .collect();
+
     // Scan through the document and identify tokens
     let mut chars = content.char_indices().peekable();
 
     while let Some((idx, ch)) = chars.next() {
         match ch {
-            // Ingredient: @name or @name{...} (names may contain spaces and
-            // punctuation when a `{...}` group is attached)
-            '@' => {
-                let start = idx;
-                let end = component_end(content, start);
-                advance_to(&mut chars, end);
+            // Ingredient (@), cookware (#) and timer (~) — use the parser span.
+            '@' | '#' | '~' => {
+                if let Some(component) = components.get(&idx) {
+                    let end = component.span.end();
+                    advance_to(&mut chars, end);
 
-                let (line, col) = line_index.line_col(start as u32);
-                let length = line_index.utf16_len(start, end);
-                builder.push(line, col, length, TOKEN_INGREDIENT);
-            }
-
-            // Cookware: #name or #name{...}
-            '#' => {
-                let start = idx;
-                let end = component_end(content, start);
-                advance_to(&mut chars, end);
-
-                let (line, col) = line_index.line_col(start as u32);
-                let length = line_index.utf16_len(start, end);
-                builder.push(line, col, length, TOKEN_COOKWARE);
-            }
-
-            // Timer: ~name{...} or ~{...}
-            '~' => {
-                let start = idx;
-                let end = component_end(content, start);
-                advance_to(&mut chars, end);
-
-                let (line, col) = line_index.line_col(start as u32);
-                let length = line_index.utf16_len(start, end);
-                builder.push(line, col, length, TOKEN_TIMER);
+                    let token_type = match component.kind {
+                        ComponentKind::Ingredient => TOKEN_INGREDIENT,
+                        ComponentKind::Cookware => TOKEN_COOKWARE,
+                        ComponentKind::Timer => TOKEN_TIMER,
+                    };
+                    let (line, col) = line_index.line_col(idx as u32);
+                    let length = line_index.utf16_len(idx, end);
+                    builder.push(line, col, length, token_type);
+                }
+                // Otherwise it's a stray marker (e.g. inside a block comment or
+                // a modifier); leave it untokenized.
             }
 
             // Line comment: -- ... OR YAML front matter: ---

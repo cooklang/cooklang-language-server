@@ -1,7 +1,7 @@
 use tower_lsp::lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind};
 
 use crate::document::Document;
-use crate::utils::component::component_end;
+use crate::utils::components::{component_at, scan_components, ComponentKind};
 use crate::utils::position::position_to_offset;
 
 pub fn get_hover(doc: &Document, params: &HoverParams) -> Option<Hover> {
@@ -102,42 +102,15 @@ fn find_element_at_offset(content: &str, offset: usize) -> Option<(ElementType, 
         return Some((ElementType::Section, line.to_string()));
     }
 
-    // Get the text before cursor on this line
-    let before_cursor = &content[line_start..offset];
-
-    // Look for element markers (@, #, ~) scanning backwards
-    // Use rfind which is UTF-8 safe and returns char boundaries
-    let markers = [
-        ('@', ElementType::Ingredient),
-        ('#', ElementType::Cookware),
-        ('~', ElementType::Timer),
-    ];
-
-    let mut best_match: Option<(usize, ElementType)> = None;
-
-    for (marker, elem_type) in markers {
-        if let Some(pos) = before_cursor.rfind(marker) {
-            // Check we're not past a closing brace (element already complete)
-            let after_marker = &before_cursor[pos..];
-            if !after_marker.contains('}') {
-                // This marker is still open, check if it's the closest one
-                match best_match {
-                    None => best_match = Some((line_start + pos, elem_type)),
-                    Some((best_pos, _)) if line_start + pos > best_pos => {
-                        best_match = Some((line_start + pos, elem_type));
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    if let Some((marker_pos, elem_type)) = best_match {
-        let end = component_end(content, marker_pos);
-        return Some((elem_type, content[marker_pos..end].to_string()));
-    }
-
-    None
+    // Otherwise, ask the parser which component (if any) is under the cursor.
+    let components = scan_components(content);
+    let component = component_at(&components, offset)?;
+    let elem_type = match component.kind {
+        ComponentKind::Ingredient => ElementType::Ingredient,
+        ComponentKind::Cookware => ElementType::Cookware,
+        ComponentKind::Timer => ElementType::Timer,
+    };
+    Some((elem_type, component.name.clone()))
 }
 
 fn extract_name(element: &str) -> String {
