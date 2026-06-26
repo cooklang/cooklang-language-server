@@ -1,6 +1,7 @@
 use tower_lsp::lsp_types::{Hover, HoverContents, HoverParams, MarkupContent, MarkupKind};
 
 use crate::document::Document;
+use crate::utils::components::{component_at, scan_components, ComponentKind};
 use crate::utils::position::position_to_offset;
 
 pub fn get_hover(doc: &Document, params: &HoverParams) -> Option<Hover> {
@@ -101,58 +102,15 @@ fn find_element_at_offset(content: &str, offset: usize) -> Option<(ElementType, 
         return Some((ElementType::Section, line.to_string()));
     }
 
-    // Get the text before cursor on this line
-    let before_cursor = &content[line_start..offset];
-
-    // Look for element markers (@, #, ~) scanning backwards
-    // Use rfind which is UTF-8 safe and returns char boundaries
-    let markers = [
-        ('@', ElementType::Ingredient),
-        ('#', ElementType::Cookware),
-        ('~', ElementType::Timer),
-    ];
-
-    let mut best_match: Option<(usize, ElementType)> = None;
-
-    for (marker, elem_type) in markers {
-        if let Some(pos) = before_cursor.rfind(marker) {
-            // Check we're not past a closing brace (element already complete)
-            let after_marker = &before_cursor[pos..];
-            if !after_marker.contains('}') {
-                // This marker is still open, check if it's the closest one
-                match best_match {
-                    None => best_match = Some((line_start + pos, elem_type)),
-                    Some((best_pos, _)) if line_start + pos > best_pos => {
-                        best_match = Some((line_start + pos, elem_type));
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    if let Some((marker_pos, elem_type)) = best_match {
-        let end = find_element_end(content, marker_pos + 1);
-        return Some((elem_type, content[marker_pos..end].to_string()));
-    }
-
-    None
-}
-
-fn find_element_end(content: &str, start: usize) -> usize {
-    let mut in_braces = false;
-
-    // Iterate by chars to handle UTF-8 properly
-    for (i, ch) in content[start..].char_indices() {
-        let pos = start + i;
-        match ch {
-            '{' => in_braces = true,
-            '}' => return pos + 1,
-            ' ' | '\n' | '\r' if !in_braces => return pos,
-            _ => {}
-        }
-    }
-    content.len()
+    // Otherwise, ask the parser which component (if any) is under the cursor.
+    let components = scan_components(content);
+    let component = component_at(&components, offset)?;
+    let elem_type = match component.kind {
+        ComponentKind::Ingredient => ElementType::Ingredient,
+        ComponentKind::Cookware => ElementType::Cookware,
+        ComponentKind::Timer => ElementType::Timer,
+    };
+    Some((elem_type, component.name.clone()))
 }
 
 fn extract_name(element: &str) -> String {
@@ -217,4 +175,61 @@ fn format_timer_hover(timer: &cooklang::model::Timer) -> String {
     }
 
     parts.join("\n\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::Document;
+    use tower_lsp::lsp_types::{
+        Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
+    };
+
+    fn hover_at(content: &str, cursor: usize) -> String {
+        let doc = Document::new(
+            Url::parse("file:///test.cook").unwrap(),
+            1,
+            content.to_string(),
+        );
+        let line_index = &doc.line_index;
+        let (line, character) = line_index.line_col(cursor as u32);
+        let params = HoverParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: doc.uri.clone(),
+                },
+                position: Position { line, character },
+            },
+            work_done_progress_params: Default::default(),
+        };
+        match get_hover(&doc, &params).unwrap().contents {
+            HoverContents::Markup(m) => m.value,
+            _ => panic!("expected markup hover"),
+        }
+    }
+
+    #[test]
+    fn hover_multi_word_ingredient_shows_full_name_and_quantity() {
+        // Regression for cooklang/CookVSCode#10: hovering anywhere on a
+        // multi-word ingredient must report the whole name and quantity.
+        let content = "Chill @heavy whipping cream{1%cup}.";
+        let cursor = content.find("whipping").unwrap(); // cursor on the 2nd word
+        let hover = hover_at(content, cursor);
+        assert!(
+            hover.contains("**Ingredient:** heavy whipping cream"),
+            "got: {hover}"
+        );
+        assert!(hover.contains("**Quantity:** 1 cup"), "got: {hover}");
+    }
+
+    #[test]
+    fn hover_ingredient_with_apostrophe_and_space() {
+        let content = "Add @lady's fingers{20}.";
+        let cursor = content.find("fingers").unwrap();
+        let hover = hover_at(content, cursor);
+        assert!(
+            hover.contains("**Ingredient:** lady's fingers"),
+            "got: {hover}"
+        );
+    }
 }

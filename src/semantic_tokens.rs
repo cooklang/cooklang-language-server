@@ -3,7 +3,10 @@ use tower_lsp::lsp_types::{
     SemanticTokensLegend, SemanticTokensOptions, SemanticTokensServerCapabilities,
 };
 
+use std::collections::HashMap;
+
 use crate::document::Document;
+use crate::utils::components::{scan_components, ComponentKind};
 
 // Token type indices
 const TOKEN_INGREDIENT: u32 = 0;
@@ -93,106 +96,51 @@ impl TokenBuilder {
     }
 }
 
+/// Advances a `char_indices` iterator until the next character starts at or
+/// after `end` (a byte offset).
+fn advance_to(chars: &mut std::iter::Peekable<std::str::CharIndices>, end: usize) {
+    while let Some(&(i, _)) = chars.peek() {
+        if i >= end {
+            break;
+        }
+        chars.next();
+    }
+}
+
 pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
     let mut builder = TokenBuilder::new();
     let content = &doc.content;
     let line_index = &doc.line_index;
+
+    // Components (ingredients, cookware, timers) come straight from the parser
+    // so their spans match how the recipe parses, keyed by their start offset.
+    let components: HashMap<usize, _> = scan_components(content)
+        .into_iter()
+        .map(|c| (c.span.start(), c))
+        .collect();
 
     // Scan through the document and identify tokens
     let mut chars = content.char_indices().peekable();
 
     while let Some((idx, ch)) = chars.next() {
         match ch {
-            // Ingredient: @name or @name{...}
-            '@' => {
-                let start = idx;
-                let mut end = idx + 1;
+            // Ingredient (@), cookware (#) and timer (~) — use the parser span.
+            '@' | '#' | '~' => {
+                if let Some(component) = components.get(&idx) {
+                    let end = component.span.end();
+                    advance_to(&mut chars, end);
 
-                // Collect the ingredient name (no spaces allowed outside braces)
-                while let Some(&(i, c)) = chars.peek() {
-                    if c == '{' {
-                        // Include until closing brace (spaces allowed inside)
-                        chars.next();
-                        end = i + 1;
-                        while let Some(&(i2, c2)) = chars.peek() {
-                            end = i2 + c2.len_utf8();
-                            chars.next();
-                            if c2 == '}' {
-                                break;
-                            }
-                        }
-                        break;
-                    } else if c.is_alphanumeric() || c == '_' {
-                        end = i + c.len_utf8();
-                        chars.next();
-                    } else {
-                        break;
-                    }
+                    let token_type = match component.kind {
+                        ComponentKind::Ingredient => TOKEN_INGREDIENT,
+                        ComponentKind::Cookware => TOKEN_COOKWARE,
+                        ComponentKind::Timer => TOKEN_TIMER,
+                    };
+                    let (line, col) = line_index.line_col(idx as u32);
+                    let length = line_index.utf16_len(idx, end);
+                    builder.push(line, col, length, token_type);
                 }
-
-                let (line, col) = line_index.line_col(start as u32);
-                let length = line_index.utf16_len(start, end);
-                builder.push(line, col, length, TOKEN_INGREDIENT);
-            }
-
-            // Cookware: #name or #name{}
-            '#' => {
-                let start = idx;
-                let mut end = idx + 1;
-
-                while let Some(&(i, c)) = chars.peek() {
-                    if c == '{' {
-                        chars.next();
-                        end = i + 1;
-                        while let Some(&(i2, c2)) = chars.peek() {
-                            end = i2 + c2.len_utf8();
-                            chars.next();
-                            if c2 == '}' {
-                                break;
-                            }
-                        }
-                        break;
-                    } else if c.is_alphanumeric() || c == '_' {
-                        end = i + c.len_utf8();
-                        chars.next();
-                    } else {
-                        break;
-                    }
-                }
-
-                let (line, col) = line_index.line_col(start as u32);
-                let length = line_index.utf16_len(start, end);
-                builder.push(line, col, length, TOKEN_COOKWARE);
-            }
-
-            // Timer: ~name{...} or ~{...}
-            '~' => {
-                let start = idx;
-                let mut end = idx + 1;
-
-                while let Some(&(i, c)) = chars.peek() {
-                    if c == '{' {
-                        chars.next();
-                        end = i + 1;
-                        while let Some(&(i2, c2)) = chars.peek() {
-                            end = i2 + c2.len_utf8();
-                            chars.next();
-                            if c2 == '}' {
-                                break;
-                            }
-                        }
-                        break;
-                    } else if c.is_alphanumeric() || c == '_' {
-                        end = i + c.len_utf8();
-                        chars.next();
-                    } else {
-                        break;
-                    }
-                }
-
-                let (line, col) = line_index.line_col(start as u32);
-                let length = line_index.utf16_len(start, end);
-                builder.push(line, col, length, TOKEN_TIMER);
+                // Otherwise it's a stray marker (e.g. inside a block comment or
+                // a modifier); leave it untokenized.
             }
 
             // Line comment: -- ... OR YAML front matter: ---
@@ -307,4 +255,43 @@ pub fn get_semantic_tokens(doc: &Document) -> Vec<SemanticToken> {
     }
 
     builder.build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::Document;
+    use tower_lsp::lsp_types::Url;
+
+    fn tokens(content: &str) -> Vec<SemanticToken> {
+        let doc = Document::new(
+            Url::parse("file:///test.cook").unwrap(),
+            1,
+            content.to_string(),
+        );
+        get_semantic_tokens(&doc)
+    }
+
+    #[test]
+    fn multi_word_ingredient_highlighted_as_one_token() {
+        // Regression for cooklang/CookVSCode#10: the highlight must span the
+        // whole `@heavy whipping cream{1%cup}`, not stop at `@heavy`.
+        let toks = tokens("Chill @heavy whipping cream{1%cup}.");
+        assert_eq!(toks.len(), 1);
+        let t = &toks[0];
+        assert_eq!(t.token_type, TOKEN_INGREDIENT);
+        assert_eq!(t.delta_start, 6); // column of '@'
+        assert_eq!(t.length, "@heavy whipping cream{1%cup}".len() as u32);
+    }
+
+    #[test]
+    fn lookahead_stops_at_next_marker() {
+        // `@multi` is single-word; the `{}` belongs to `#tool`.
+        let toks = tokens("@multi word #tool{} end.");
+        assert_eq!(toks.len(), 2);
+        assert_eq!(toks[0].token_type, TOKEN_INGREDIENT);
+        assert_eq!(toks[0].length, "@multi".len() as u32);
+        assert_eq!(toks[1].token_type, TOKEN_COOKWARE);
+        assert_eq!(toks[1].length, "#tool{}".len() as u32);
+    }
 }
