@@ -99,12 +99,18 @@ mod tests {
         assert_eq!(comps.len(), 1);
         assert_eq!(comps[0].kind, ComponentKind::Ingredient);
         assert_eq!(comps[0].name, "heavy whipping cream");
-        assert_eq!(&s[comps[0].span.start()..comps[0].span.end()], "@heavy whipping cream{1%cup}");
+        assert_eq!(
+            &s[comps[0].span.start()..comps[0].span.end()],
+            "@heavy whipping cream{1%cup}"
+        );
     }
 
     #[test]
     fn names_with_punctuation() {
-        assert_eq!(texts("Add @lady's fingers{20}."), vec!["@lady's fingers{20}"]);
+        assert_eq!(
+            texts("Add @lady's fingers{20}."),
+            vec!["@lady's fingers{20}"]
+        );
         assert_eq!(
             texts("Use @sun-dried tomatoes{1/2%cup}."),
             vec!["@sun-dried tomatoes{1/2%cup}"]

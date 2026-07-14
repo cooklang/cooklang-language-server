@@ -224,7 +224,11 @@ carrot
         assert_eq!(milk.unwrap().category, "dairy");
 
         // Duplicate apple entries should be skipped (only one apple)
-        let apple_count = config.ingredients.iter().filter(|i| i.name == "apple").count();
+        let apple_count = config
+            .ingredients
+            .iter()
+            .filter(|i| i.name == "apple")
+            .count();
         assert_eq!(apple_count, 1);
     }
 }

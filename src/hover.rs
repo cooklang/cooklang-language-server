@@ -181,9 +181,7 @@ fn format_timer_hover(timer: &cooklang::model::Timer) -> String {
 mod tests {
     use super::*;
     use crate::document::Document;
-    use tower_lsp::lsp_types::{
-        Position, TextDocumentIdentifier, TextDocumentPositionParams, Url,
-    };
+    use tower_lsp::lsp_types::{Position, TextDocumentIdentifier, TextDocumentPositionParams, Url};
 
     fn hover_at(content: &str, cursor: usize) -> String {
         let doc = Document::new(
