@@ -108,8 +108,10 @@ jobs:
       # Trusted publishing: no CARGO_REGISTRY_TOKEN secret needed, but the crate
       # must have this repo + workflow registered as a Trusted Publisher on
       # crates.io. Same setup as cooklang-rs and CookCLI.
+      # Deliberately runs on dry runs too: this is the OIDC handshake with
+      # crates.io, so a dry run actually proves the Trusted Publisher config is
+      # correct. It only mints a token - nothing is uploaded.
       - name: Authenticate to crates.io
-        if: ${{ github.event.inputs.dry_run != 'true' }}
         uses: rust-lang/crates-io-auth-action@v1
         id: auth
 
