@@ -58,3 +58,21 @@ fn convert_source_diag(
         ..Default::default()
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::get_diagnostics;
+    use crate::document::Document;
+    use tower_lsp::lsp_types::Url;
+
+    #[test]
+    fn documented_minute_timer_has_no_diagnostic() {
+        let document = Document::new(
+            Url::parse("file:///test.cook").unwrap(),
+            1,
+            "Rest the batter for ~{15%minutes}.".to_string(),
+        );
+
+        assert!(get_diagnostics(&document).is_empty());
+    }
+}

@@ -16,11 +16,9 @@ tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
 
 # Cooklang
-# We only parse and diagnose: the parser, model, error types and aisle config.
-# bundled_units (on by default) builds the unit database and is unused here -
-# and because cargo unifies features, enabling it forced it on every consumer
-# that shares our cooklang dependency.
-cooklang = { version = "0.18", default-features = false, features = ["aisle"] }
+# The parser needs the bundled unit database to validate timer units such as
+# `minutes` during LSP diagnostics.
+cooklang = { version = "0.18", default-features = false, features = ["aisle", "bundled_units"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
