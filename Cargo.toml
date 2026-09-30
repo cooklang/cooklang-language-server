@@ -20,7 +20,7 @@ tokio = { version = "1", features = ["full"] }
 # bundled_units (on by default) builds the unit database and is unused here -
 # and because cargo unifies features, enabling it forced it on every consumer
 # that shares our cooklang dependency.
-cooklang = { version = "0.18", default-features = false, features = ["aisle"] }
+cooklang = { version = "0.19", default-features = false, features = ["aisle"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
