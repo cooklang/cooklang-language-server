@@ -79,7 +79,9 @@ jobs:
           cargo fmt --check
           cargo clippy --all-targets -- -D warnings
           cargo test
-          cargo publish --dry-run
+          # The version bump above is committed in the next step; the tree is
+          # dirty by design here.
+          cargo publish --dry-run --allow-dirty
 
       - name: Commit version bump
         if: ${{ github.event.inputs.dry_run != 'true' }}
